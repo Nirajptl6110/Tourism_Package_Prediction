@@ -1,28 +1,37 @@
 name: Tourism Package Prediction MLOps Pipeline
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - main
 
 jobs:
 
   register-dataset:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v3
+
       - name: Install Dependencies
-        run: pip install -r Tourism_Package_prediction_Project/deployment/requirements.txt
+        run: pip install -r Tourism_Package_prediction_Project/requirements.txt
+
       - name: Upload Dataset to Hugging Face Hub
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: python Tourism_Package_prediction_Project/model_building/data_register.py
 
+
   data-prep:
     needs: register-dataset
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v3
+
       - name: Install Dependencies
-        run: pip install -r Tourism_Package_prediction_Project/deployment/requirements.txt
+        run: pip install -r Tourism_Package_prediction_Project/requirements.txt
+
       - name: Run Data Preparation
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
@@ -32,25 +41,43 @@ jobs:
   model-training:
     needs: data-prep
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v3
+
       - name: Install Dependencies
-        run: pip install -r Tourism_Package_prediction_Project/deployment/requirements.txt
-      - name: Model Building
+        run: pip install -r Tourism_Package_prediction_Project/requirements.txt
+
+      - name: Start MLflow Tracking Server
+        run: |
+          nohup mlflow server \
+          --backend-store-uri sqlite:///mlflow.db \
+          --default-artifact-root ./artifacts \
+          --host 0.0.0.0 \
+          --port 5000 &
+          sleep 10
+
+      - name: Model Building and Experiment Tracking
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: python Tourism_Package_prediction_Project/model_building/train.py
 
 
   deploy-hosting:
+    needs:
+      - register-dataset
+      - data-prep
+      - model-training
+
     runs-on: ubuntu-latest
-    needs: [model-training,data-prep,register-dataset]
+
     steps:
       - uses: actions/checkout@v3
+
       - name: Install Dependencies
-        run: pip install -r Tourism_Package_prediction_Project/deployment/requirements.txt
-      - name: Push files to Frontend Hugging Face Space
+        run: pip install -r Tourism_Package_prediction_Project/requirements.txt
+
+      - name: Deploy Hugging Face Space
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: python Tourism_Package_prediction_Project/hosting/hosting.py
-
